@@ -1,204 +1,141 @@
-# colmap-custom
-
-`colmap-custom`은 오리지널 [COLMAP](https://github.com/colmap/colmap)를 포크하여 CLI 중심으로 활용하기 위해 제작된 커스텀 버전입니다.  
-이미지 기반의 Structure-from-Motion(SfM) 및 3D 재구성 파이프라인을 제공합니다.
-
-> **참고**: COLMAP에 대한 전반적인 설명과 GUI 사용법 등은 [공식 문서](https://colmap.github.io/)를 참조하세요.
+아래는 예시적인 README.md 파일로, 사용자가 **기존 빌드된 COLMAP 실행 파일**(application 폴더 내)과 Python 스크립트를 이용해 빠르게 3D 복원을 진행할 수 있도록 하는 방법을 안내합니다. 실제 환경에 맞춰 경로나 설명을 적절히 수정해 주세요.
 
 ---
 
-## 주요 특징
+# COLMAP Pipeline with Python Scripts
 
-- **원본 COLMAP**의 핵심 기능(Feature Extraction/Matching, Sparse Reconstruction, Dense Reconstruction 등)을 포함  
-- **CLI 중심**으로 작동하도록 포크 버전 일부 스크립트 및 설정 수정  
-- **CUDA 가속**(선택적) 지원
+본 리포지토리는 **이미 빌드된 COLMAP** 실행 바이너리와 **Python 스크립트**(task.py, exe.py 등)를 통해 간단히 3D 복원을 수행하기 위한 예시 프로젝트입니다.
+
+## 폴더 구조
+
+```
+.
+├── application/
+│   ├── build/              # 이미 빌드된 COLMAP 바이너리 경로
+│   └── exe.py              # COLMAP 관련 함수를 모아 둔 Python 코드 (mapper, dense_reconstruction 등)
+├── inputs/
+│   └── example_dataset/    # 원본 이미지 폴더
+├── outputs/
+│   └── example_output/     # 재구성 결과가 저장될 폴더
+├── task.py                 # 파이프라인을 제어하는 Python 스크립트
+└── README.md               # 사용 안내 (이 문서)
+```
+
+> **주의**:  
+> - `application/` 폴더에는 colmap 바이너리가 이미 빌드되어 있음.  
+> - `exe.py` 내 `COLMAP_EXE` 변수가 이 바이너리를 가리키도록 설정되어 있어야 합니다. (예: `COLMAP_EXE = os.path.abspath("./colmap")` 혹은 절대 경로.)
 
 ---
 
-## 1. 빌드 방법
+## 1. 의존성 / 환경
 
-### 1.1. 사전 요구사항
+- **Python 3** (3.6 이상 권장)  
+- COLMAP이 빌드되어 있는 **application/build** 폴더  
+- 기타 python 라이브러리(표준 라이브러리: `os`, `subprocess`, `shutil`, `logging` 등)
 
-- C++ 컴파일러 (C++11 이상)  
-- CMake (버전 3.5 이상 권장)  
-- (선택) CUDA (GPU 가속 사용 시 권장)  
-- OpenGL, Glew, GLFW 등 그래픽 관련 라이브러리 (COLMAP에서 시각화 기능 사용 시 필요)  
-
-기본 환경(우분투 예시):
-
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-    build-essential cmake \
-    libatlas-base-dev libsuitesparse-dev \
-    libeigen3-dev libgoogle-glog-dev libgflags-dev \
-    libqt5core5a libqt5gui5 libqt5opengl5 libqt5widgets5 \
-    qtbase5-dev \
-    libglew-dev glew-utils \
-    freeglut3-dev \
-    libcgal-dev
-# GPU 사용 시:
-# sudo apt-get install nvidia-cuda-toolkit
-```
-
-### 1.2. 빌드 절차
-
-```bash
-# 1) 소스 다운로드
-git clone https://github.com/사용자이름/colmap-custom.git
-cd colmap-custom
-
-# 2) 빌드 폴더 생성
-mkdir build && cd build
-
-# 3) CMake 설정
-cmake ..
-
-# 4) 컴파일
-make -j8  # CPU 코어 수에 맞게 -j 옵션 조정
-```
-
-> 빌드 완료 후, `build/src/exe` (또는 `build/src/exe/Release`) 폴더 등에 `colmap` 실행 파일이 생성됩니다.
+GPU를 사용하려면 **CUDA 호환 드라이버**가 설치된 상태여야 합니다.
 
 ---
 
-## 2. CLI 모드 사용법
+## 2. 사용 방법
 
-### 2.1. 실행 파일 위치에서 직접 실행
+### 2.1. 파이프라인 한 번에 실행
 
-환경변수를 별도 설정하지 않았다면, 다음과 같이 **절대경로 혹은 상대경로**로 직접 실행할 수 있습니다:
-```bash
-# 빌드 폴더 내에서:
-cd colmap-custom/build/src/exe
-./colmap help
-```
-또는:
-```bash
-/home/username/colmap-custom/build/src/exe/colmap gui
-```
-등으로 실행 가능합니다.
+1. **이미지 폴더 준비**  
+   - 예: `inputs/desk-images` 폴더에 재구성할 이미지들(예: `IMG_XXXX.jpg`)을 모두 넣어둡니다.
 
-### 2.2. PATH 설정 혹은 alias (선택)
+2. **task.py 수정**  
+   - `task.py`의 상단에서 `input_path`, `output_path` 변수를 설정:
+     ```python
+     input_path = "inputs/desk-images"     # 원본 이미지 폴더
+     output_path = "outputs/3dgs-images"   # 결과 저장 경로
+     GPU_INDEX = 0                         # 0: 첫 번째 GPU, -1: CPU, 1: 두 번째 GPU 등
+     ```
+   - GPU 사용을 원하면 `GPU_INDEX = 0` (혹은 원하는 GPU 번호), CPU만 쓰려면 `-1`로 지정.
 
-자주 사용한다면 `.bashrc`(또는 `.zshrc`) 파일에 경로를 추가해 편리하게 쓸 수 있습니다:
+3. **`all_pipeline()` 함수 호출**  
+   - `task.py` 내부에서 다음과 같이 `all_pipeline(input_path, output_path, gpu_index=GPU_INDEX)` 함수를 호출하면, **한 번에 전체 파이프라인**을 진행합니다:
+     ```python
+     all_pipeline(input_path, output_path, GPU_INDEX)
+     ```
+     1. **prepare**: 이미지를 `outputs/.../images` 폴더로 복사(또는 symlink)  
+     2. **feature_extraction**: SIFT 특징점 추출  
+     3. **match_features**: 특징점 매칭  
+     4. **mapper**: Sparse Reconstruction  
+     5. **dense_reconstruction**: Dense Reconstruction
 
-```bash
-export PATH="$HOME/colmap-custom/build/src/exe:$PATH"
-# 반영
-source ~/.bashrc
-```
-
-이제 어느 디렉토리에서든지 `colmap` 명령어로 바로 실행할 수 있습니다.
-
----
-
-## 3. 예시 워크플로우 (CLI 중심)
-
-일반적인 SfM ~ MVS 재구성 파이프라인은 다음 단계를 거칩니다.
-
-> **전제**:  
-> - 이미지들이 `path/to/images` 폴더에 있음  
-> - 새로운 데이터베이스 파일을 `path/to/database.db`로 생성  
-> - 결과물을 저장할 `path/to/sparse`, `path/to/dense` 폴더 준비  
-
-1. **특징점 추출 (Feature Extraction)**
-
+4. **task.py 실행**  
    ```bash
-   colmap feature_extractor \
-       --database_path path/to/database.db \
-       --image_path path/to/images \
-       --SiftExtraction.use_gpu 1
+   python3 task.py
    ```
-   - `SiftExtraction.use_gpu=1`은 CUDA 설치 후 GPU를 활용
+   - 완료 후 `outputs/3dgs-images/sparse/` 폴더에서 스파스 포인트 클라우드,  
+   - `outputs/3dgs-images/dense/` 폴더에서 뎁스맵(`fused.ply`) 등을 확인할 수 있습니다.  
 
-2. **특징점 매칭 (Feature Matching)**
+이와 같이 **`all_pipeline()`** 함수를 사용하면 COLMAP 파이프라인 전체를 자동으로 돌릴 수 있으므로, 별도의 단계별 호출 없이도 쉽게 3D 복원을 진행할 수 있습니다.  
 
-   ```bash
-   colmap exhaustive_matcher \
-       --database_path path/to/database.db \
-       --SiftMatching.use_gpu 1
-   ```
-   - 모든 이미지 쌍에 대해 특징점을 매칭 (이미지 수가 많으면 시간이 오래 걸림)
+### 2.2. 단계별로 실행
 
-3. **Mapper (Sparse Reconstruction)**
+원한다면 `all_pipeline` 대신 **단계별 함수**를 수동으로 호출할 수도 있습니다. 예:
 
-   ```bash
-   mkdir path/to/sparse
-   colmap mapper \
-       --database_path path/to/database.db \
-       --image_path path/to/images \
-       --output_path path/to/sparse
-   ```
-   - Sparse reconstruction 결과(카메라 포즈, 3D 포인트 클라우드) 생성
+```python
+prepare(input_path, output_path)
+feature_extraction(output_path, gpu_index=0)  # SIFT 추출
+match_features(output_path, gpu_index=0)      # 특징점 매칭
+mapper(output_path)                           # Sparse
+dense_reconstruction(output_path, gpu_index=0)# Dense
+```
 
-4. **Dense Reconstruction** (옵션)
-
-   1) **왜곡보정 (Image Undistorter)**
-      ```bash
-      mkdir path/to/dense
-      colmap image_undistorter \
-          --image_path path/to/images \
-          --input_path path/to/sparse/0 \
-          --output_path path/to/dense \
-          --output_type COLMAP
-      ```
-
-   2) **PatchMatchStereo & StereoFusion**
-      ```bash
-      colmap patch_match_stereo \
-          --workspace_path path/to/dense \
-          --workspace_format COLMAP \
-          --PatchMatchStereo.gpu_index 0
-
-      colmap stereo_fusion \
-          --workspace_path path/to/dense \
-          --workspace_format COLMAP \
-          --input_type geometric \
-          --output_path path/to/dense/fused.ply
-      ```
-      - `fused.ply`는 포인트 클라우드 형태
-
-5. **메시 생성 (선택)**
-
-   ```bash
-   colmap poisson_mesher \
-       --input_path path/to/dense/fused.ply \
-       --output_path path/to/dense/meshed-poisson.ply
-   ```
-   - Poisson Reconstruction 알고리즘을 이용해 3D 메시 생성
+`gpu_index` 인자를 통해 원하는 GPU를 지정하거나 `-1`로 CPU 모드로 실행 가능합니다.
 
 ---
 
-## 4. FAQ
+## 3. GPU 인덱스 설정 & CPU 모드
 
-1. **CUDA 관련 에러**  
-   - CUDA가 제대로 깔려있지 않거나 버전이 맞지 않으면 GPU 기능이 인식되지 않을 수 있습니다.  
-   - `--SiftExtraction.use_gpu 0` 또는 `--SiftMatching.use_gpu 0`으로 CPU 모드로 실행하면 우회 가능하지만, 속도가 느려집니다.
-
-2. **`colmap` 명령어를 못 찾음**  
-   - 빌드 폴더에서 직접 `./colmap` 형태로 실행하거나, 위에 나온 **PATH**/**alias** 설정이 되어 있는지 재확인하세요.
-
-3. **`GL/glew.h: No such file or directory` 등 빌드 에러**  
-   - OpenGL 관련 라이브러리가 설치되지 않았을 가능성이 큽니다. OS에 맞춰 `libglew-dev`(우분투) 등 의존 패키지를 설치해야 합니다.
+- `gpu_index >= 0` → 해당 번호 GPU 사용.  
+- `gpu_index = -1` → CPU 모드.  
+- COLMAP의 **PatchMatchStereo** 단계에서는 명시적으로 `--PatchMatchStereo.gpu_index`를 사용합니다.  
+- **SIFT 추출** / **특징점 매칭** 부분은 본 코드에서는 `CUDA_VISIBLE_DEVICES` 환경변수를 통해 강제로 해당 GPU만 보이게 하므로, `gpu_index`가 1이라면 `CUDA_VISIBLE_DEVICES="1"`로 설정해주게 됩니다.
 
 ---
 
-## 5. 라이선스
+## 4. 자주 묻는 질문(FAQ)
 
-- 본 레포지토리는 오리지널 [COLMAP](https://github.com/colmap/colmap)의 소스코드를 기반으로 합니다.  
-- COLMAP은 [BSD 3-Clause License](https://github.com/colmap/colmap/blob/dev/LICENSE.txt)를 따릅니다.  
-- 이 포크 버전(`colmap-custom`)도 동일한 라이선스 하에 배포됩니다.
+1. **이미 `IMAGE_EXISTS` 로그가 뜹니다.**  
+   - 이는 기존에 같은 이미지 이름으로 이미 특징점이 추출된 기록이 `database.db`에 존재함을 의미합니다.  
+   - 새로 추출을 원하면 `outputs/.../database.db`를 삭제한 후 다시 시도하세요.
+
+2. **GPU 메모리 부족 / CUDA 에러**  
+   - `nvidia-smi`로 GPU 메모리 사용을 확인하십시오.  
+   - `gpu_index=-1`로 CPU 모드로 동작시키거나, `--max_image_size`나 스레드 수를 제한하여 메모리 사용량을 줄일 수 있습니다.
+
+3. **PermissionError**  
+   - 보통 `colmap` 심볼릭 링크 또는 실행 파일 권한이 잘못된 경우입니다.  
+   - `ls -l application/build/src/exe/colmap` 등을 통해 실행 권한이 있는지, 심볼릭 링크가 올바른지 확인하세요.
+
+4. **'Failed to process the image'** 메시지**  
+   - 손상된 JPEG 파일이거나, GPU 연산 실패(CUDA error) 등이 원인일 수 있습니다.  
+   - `gpu_index`를 바꿔 다른 GPU로 시도하거나, CPU 모드로 확인해보세요.
 
 ---
 
-## 6. 기여 방법
+## 5. 기타
 
-1. 이 레포지토리를 포크하고, 새로운 브랜치에서 개발하세요.  
-2. 변경 사항을 커밋하고 PR(Pull Request)을 보내주세요.  
-3. Issue Tracker를 통해 버그나 제안 사항을 공유해주시면 큰 도움이 됩니다.
+- **추가 기능**:  
+  - 메시 생성(예: `poisson_mesher`) 함수를 추가하여 `fused.ply`에서 메시를 만들 수 있습니다.  
+  - 큰 규모의 이미지에 대해서는 “hierarchical_mapper” 등 고급 기능도 고려해 볼 수 있습니다.
+- **환경 변수**:  
+  - 코드 내부에서 `subprocess.run` 시 `env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)` 등을 사용하여 GPU를 동적으로 선택합니다.
 
 ---
 
-### 문의 / 컨택
+## 6. 라이선스
 
-- Repository Issues 활용  
+- **COLMAP**은 [BSD 3-Clause License](https://github.com/colmap/colmap/blob/dev/LICENSE.txt)를 준수합니다.  
+- 본 프로젝트의 Python 스크립트 또한 동일 라이선스로 배포하거나, 내부 정책에 맞춰 라이선스를 명시해 주세요.
+
+---
+
+## 7. 문의 / 기여
+
+- 궁금한 점이나 버그 제보는 Issue 트래커 또는 PR로 보내 주세요.  
+- 직접 코드를 수정한 뒤 Pull Request를 통해 기여하실 수 있습니다.  
