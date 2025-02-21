@@ -1,11 +1,43 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+task.py
+
+'from task import ...' 식으로 함수들을 불러와
+특정 데이터셋에 대해 전체 COLMAP 파이프라인을 실행하는 예시.
+"""
+
+from application.exe import all_pipeline, prepare, feature_extraction, match_features, mapper, dense_reconstruction
+
+# 샘플 입력/출력 경로 지정
+input_path = "inputs/desk-images"     # 이미지를 저장한 폴더
+output_path = "outputs/3dgs-images"   # COLMAP 결과 저장 폴더
+USE_GPU = True
+GPU_INDEX = 1 if USE_GPU else -1
+
+# (1) 전체 파이프라인 한 번에 돌리기
+# all_pipeline(input_path, output_path, GPU_INDEX)
+
+# (2) 만약 단계별로 나누어 호출하고 싶다면 (주석 해제 후 사용)
+# prepare(input_path, output_path)
+# feature_extraction(output_path, GPU_INDEX)
+# match_features(output_path, GPU_INDEX)
+# mapper(output_path)
+# dense_reconstruction(output_path, GPU_INDEX)
+
+# ---------- (여기부터 작성) ----------
+
+all_pipeline(input_path, output_path, GPU_INDEX)
+
+
+#!/usr/bin/env python3 exe.py
+# -*- coding: utf-8 -*-
+
 import os
 import subprocess
 import logging
 import sys
-import shutil  # Add this import at the top with other imports
 
 ###############################################################################
 # 로깅 설정
@@ -32,29 +64,18 @@ logger.addHandler(console_handler)
 ###############################################################################
 
 # colmap 실행 경로(현재 디렉토리에 있는 심볼릭 링크가 '../colmap'을 가리킨다고 가정)
-COLMAP_EXE = os.path.abspath("colmap")
+COLMAP_EXE = os.path.abspath("../colmap")
 
 ###############################################################################
 # 유틸 함수
 ###############################################################################
 
-def run_colmap(cmd_args, gpu_index=0):
+def run_colmap(cmd_args):
     """
     COLMAP을 실행하는 헬퍼 함수.
-    - cmd_args: ['feature_extractor', '--database_path', ...] 식으로 전달
-    - gpu_index: 사용하고자 하는 GPU 인덱스 (-1이면 CPU 사용)
+    cmd_args는 ['feature_extractor', '--database_path', ...] 형태로 전달.
     """
-    env = os.environ.copy()
-    
-    if gpu_index >= 0:
-        env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
-        logger.debug(f"Setting CUDA_VISIBLE_DEVICES={env['CUDA_VISIBLE_DEVICES']}")
-    else:
-        env["CUDA_VISIBLE_DEVICES"] = ""
-        logger.debug("GPU disabled => CUDA_VISIBLE_DEVICES='' (CPU mode)")
-    
     logger.debug(f"Preparing to run colmap with cmd_args: {cmd_args}")
-    
     if not os.path.exists(COLMAP_EXE):
         logger.error(f"COLMAP executable not found: {COLMAP_EXE}")
         raise FileNotFoundError(f"COLMAP executable not found: {COLMAP_EXE}")
@@ -62,8 +83,9 @@ def run_colmap(cmd_args, gpu_index=0):
     full_cmd = [COLMAP_EXE] + cmd_args
     logger.info(f"Running: {' '.join(full_cmd)}")
 
+    # 실제 실행
     try:
-        subprocess.run(full_cmd, check=True, env=env)
+        subprocess.run(full_cmd, check=True)
         logger.debug("COLMAP command finished without errors.")
     except subprocess.CalledProcessError as e:
         logger.error(f"COLMAP command failed with exit code {e.returncode}")
@@ -85,7 +107,7 @@ def safe_makedirs(path):
 def prepare(input_path, output_foldername):
     """
     1) 출력 폴더 생성
-    2) 입력 폴더의 이미지들을 outputs/<folder>/images 폴더에 물리적으로 복사
+    2) 입력 폴더 -> 'images' 심볼릭 링크로 연결
     """
     logger.debug(f"prepare() called with input_path={input_path}, output_foldername={output_foldername}")
     input_abs = os.path.abspath(input_path)
@@ -96,15 +118,16 @@ def prepare(input_path, output_foldername):
     
     safe_makedirs(output_abs)
     
-    images_folder = os.path.join(output_abs, "images")
-    logger.debug(f"Target images folder: {images_folder}")
+    images_link = os.path.join(output_abs, "images")
+    logger.debug(f"Checking symlink for images: {images_link}")
     
-    if os.path.exists(images_folder):
-        logger.debug(f"Images folder already exists: {images_folder}. Skipping copy.")
+    if not os.path.islink(images_link):
+        rel_target = os.path.relpath(input_abs, os.path.dirname(images_link))
+        logger.debug(f"Creating symlink from {images_link} to {rel_target}")
+        os.symlink(rel_target, images_link)
+        logger.info(f"Created symlink: {images_link} -> {rel_target}")
     else:
-        logger.info(f"Copying images from {input_abs} to {images_folder}")
-        shutil.copytree(input_abs, images_folder)
-        logger.info(f"Copied images to {images_folder}")
+        logger.debug(f"Symlink already exists: {images_link}, skipping creation.")
 
 def feature_extraction(output_foldername, gpu_index=0):
     """
@@ -125,7 +148,7 @@ def feature_extraction(output_foldername, gpu_index=0):
         "--SiftExtraction.use_gpu", "1" if gpu_index >= 0 else "0"
     ]
     
-    run_colmap(cmd, gpu_index=gpu_index)
+    run_colmap(cmd)
 
 def match_features(output_foldername, gpu_index=0):
     """
@@ -143,7 +166,7 @@ def match_features(output_foldername, gpu_index=0):
         "--SiftMatching.use_gpu", "1" if gpu_index >= 0 else "0"
     ]
     
-    run_colmap(cmd, gpu_index=gpu_index)
+    run_colmap(cmd)
 
 def mapper(output_foldername):
     """
@@ -174,7 +197,7 @@ def dense_reconstruction(output_foldername, gpu_index=0):
     Dense Reconstruction (image_undistorter -> patch_match_stereo -> stereo_fusion)
     - input: sparse/0 폴더
     - output: dense 폴더
-    - gpu_index: GPU 인덱스 (-1: CPU 사용)
+    - gpu_index: GPU index to use for patch_match_stereo (default: 0)
     """
     logger.debug(f"dense_reconstruction() called with output_foldername={output_foldername}, gpu_index={gpu_index}")
     output_abs = os.path.abspath(output_foldername)
@@ -195,18 +218,18 @@ def dense_reconstruction(output_foldername, gpu_index=0):
         "--output_type", "COLMAP"
     ]
     logger.debug(f"image_undistorter command: {cmd_undist}")
-    run_colmap(cmd_undist, gpu_index=gpu_index)
+    run_colmap(cmd_undist)
     
     # 2) patch_match_stereo
     cmd_patch = [
         "patch_match_stereo",
         "--workspace_path", dense_folder,
         "--workspace_format", "COLMAP",
-        "--PatchMatchStereo.gpu_index", "0" if gpu_index >= 0 else "-1"
+        "--PatchMatchStereo.gpu_index", str(gpu_index)
     ]
     
     logger.debug(f"Running patch_match_stereo with GPU index {gpu_index}")
-    run_colmap(cmd_patch, gpu_index=gpu_index)
+    run_colmap(cmd_patch)
     
     # 3) stereo_fusion
     fused_ply = os.path.join(dense_folder, "fused.ply")
@@ -218,7 +241,7 @@ def dense_reconstruction(output_foldername, gpu_index=0):
         "--output_path", fused_ply
     ]
     logger.debug(f"stereo_fusion command: {cmd_fusion}")
-    run_colmap(cmd_fusion, gpu_index=gpu_index)
+    run_colmap(cmd_fusion)
 
 def all_pipeline(input_path, output_foldername, gpu_index=0):
     """

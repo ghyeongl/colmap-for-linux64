@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-run_example.py
+task.py
 
 'from task import ...' 식으로 함수들을 불러와
 특정 데이터셋에 대해 전체 COLMAP 파이프라인을 실행하는 예시.
@@ -11,10 +11,10 @@ run_example.py
 from application.exe import all_pipeline, prepare, feature_extraction, match_features, mapper, dense_reconstruction
 
 # 샘플 입력/출력 경로 지정
-input_path = "inputs/datasetA"     # 이미지를 저장한 폴더
-output_path = "outputs/datasetA"   # COLMAP 결과 저장 폴더
+input_path = "inputs/desk-images"     # 이미지를 저장한 폴더
+output_path = "outputs/3dgs-images"   # COLMAP 결과 저장 폴더
 USE_GPU = True
-GPU_INDEX = 0 if USE_GPU else -1
+GPU_INDEX = 1 if USE_GPU else -1
 
 # (1) 전체 파이프라인 한 번에 돌리기
 # all_pipeline(input_path, output_path, GPU_INDEX)
@@ -28,4 +28,4 @@ GPU_INDEX = 0 if USE_GPU else -1
 
 # ---------- (여기부터 작성) ----------
 
-
+all_pipeline(input_path, output_path, GPU_INDEX)
