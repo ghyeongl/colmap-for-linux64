@@ -8,7 +8,6 @@ src/colmap/util/version.cc
 .vs
 .DS_Store
 .cache
-build*/
 install-debug/
 install-release/
 data/

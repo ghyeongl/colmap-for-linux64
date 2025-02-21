@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/ghryu/Drives/Env-AI/gaussian-splatting/colmap/build/_deps/poselib-subbuild/CMakeFiles/poselib-populate"
+		},
+		{
+			"file" : "/home/ghryu/Drives/Env-AI/gaussian-splatting/colmap/build/_deps/poselib-subbuild/CMakeFiles/poselib-populate.rule"
+		},
+		{
+			"file" : "/home/ghryu/Drives/Env-AI/gaussian-splatting/colmap/build/_deps/poselib-subbuild/CMakeFiles/poselib-populate-complete.rule"
+		},
+		{
+			"file" : "/home/ghryu/Drives/Env-AI/gaussian-splatting/colmap/build/_deps/poselib-subbuild/poselib-populate-prefix/src/poselib-populate-stamp/poselib-populate-build.rule"
+		},
+		{
+			"file" : "/home/ghryu/Drives/Env-AI/gaussian-splatting/colmap/build/_deps/poselib-subbuild/poselib-populate-prefix/src/poselib-populate-stamp/poselib-populate-configure.rule"
+		},
+		{
+			"file" : "/home/ghryu/Drives/Env-AI/gaussian-splatting/colmap/build/_deps/poselib-subbuild/poselib-populate-prefix/src/poselib-populate-stamp/poselib-populate-download.rule"
+		},
+		{
+			"file" : "/home/ghryu/Drives/Env-AI/gaussian-splatting/colmap/build/_deps/poselib-subbuild/poselib-populate-prefix/src/poselib-populate-stamp/poselib-populate-install.rule"
+		},
+		{
+			"file" : "/home/ghryu/Drives/Env-AI/gaussian-splatting/colmap/build/_deps/poselib-subbuild/poselib-populate-prefix/src/poselib-populate-stamp/poselib-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/ghryu/Drives/Env-AI/gaussian-splatting/colmap/build/_deps/poselib-subbuild/poselib-populate-prefix/src/poselib-populate-stamp/poselib-populate-patch.rule"
+		},
+		{
+			"file" : "/home/ghryu/Drives/Env-AI/gaussian-splatting/colmap/build/_deps/poselib-subbuild/poselib-populate-prefix/src/poselib-populate-stamp/poselib-populate-test.rule"
+		},
+		{
+			"file" : "/home/ghryu/Drives/Env-AI/gaussian-splatting/colmap/build/_deps/poselib-subbuild/poselib-populate-prefix/src/poselib-populate-stamp/poselib-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"poselib-populate"
+		],
+		"name" : "poselib-populate"
+	}
+}
