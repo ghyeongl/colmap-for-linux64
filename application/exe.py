@@ -6,6 +6,7 @@ import subprocess
 import logging
 import sys
 import shutil  # Add this import at the top with other imports
+import re
 
 ###############################################################################
 # 로깅 설정
@@ -17,15 +18,18 @@ logger.setLevel(logging.DEBUG)
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.DEBUG)
 # 로그 포맷 지정
-formatter = logging.Formatter("[%(levelname)s] %(name)s - %(message)s")
+formatter = logging.Formatter(
+    fmt="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 # (선택) 파일 핸들러도 추가해 로그를 파일로 남기고 싶다면 활성화
-# file_handler = logging.FileHandler("colmap_pipeline.log")
-# file_handler.setLevel(logging.DEBUG)
-# file_handler.setFormatter(formatter)
-# logger.addHandler(file_handler)
+file_handler = logging.FileHandler("task.log")
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 ###############################################################################
 # 설정부
@@ -63,10 +67,49 @@ def run_colmap(cmd_args, gpu_index=0):
     logger.info(f"Running: {' '.join(full_cmd)}")
 
     try:
-        subprocess.run(full_cmd, check=True, env=env)
+        result = subprocess.run(full_cmd,
+                              check=True,
+                              env=env,
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE,
+                              text=True)
+
+        if result.stdout:
+            logger.info("[COLMAP-STDOUT]\n" + result.stdout)
+            
+        # Process stderr by lines
+        stderr_lines = result.stderr.splitlines()
+        for line in stderr_lines:
+            line_stripped = line.strip()
+            if not line_stripped:
+                # Skip empty lines or log as debug
+                logger.debug("[COLMAP-EMPTY-LINE]")
+                continue
+            
+            if re.match(r"^F\d{8} ", line_stripped):
+                # 진짜 Fatal: F20250222 형식
+                logger.critical("[COLMAP] " + line_stripped)
+            elif re.match(r"^E\d{8} ", line_stripped):
+                # 진짜 Error
+                logger.error("[COLMAP] " + line_stripped)
+            elif re.match(r"^W\d{8} ", line_stripped):
+                # Warning
+                logger.warning("[COLMAP] " + line_stripped)
+            elif re.match(r"^I\d{8} ", line_stripped):
+                # Info
+                logger.info("[COLMAP] " + line_stripped)
+            else:
+                # 나머지는 일반 메시지
+                logger.debug("[COLMAP] " + line_stripped)
+
+
         logger.debug("COLMAP command finished without errors.")
     except subprocess.CalledProcessError as e:
         logger.error(f"COLMAP command failed with exit code {e.returncode}")
+        if e.stdout:
+            logger.error("[COLMAP-STDOUT]\n" + e.stdout)
+        if e.stderr:
+            logger.error("[COLMAP-STDERR]\n" + e.stderr)
         raise
 
 def safe_makedirs(path):
@@ -145,7 +188,7 @@ def match_features(output_foldername, gpu_index=0):
     
     run_colmap(cmd, gpu_index=gpu_index)
 
-def mapper(output_foldername):
+def mapper(output_foldername, gpu_index=0):
     """
     Sparse Reconstruction
     - outputs/<folder>/database.db, images -> outputs/<folder>/sparse 폴더
@@ -167,7 +210,7 @@ def mapper(output_foldername):
     ]
     
     logger.debug(f"Mapper command arguments: {cmd}")
-    run_colmap(cmd)
+    run_colmap(cmd, gpu_index=gpu_index)
 
 def dense_reconstruction(output_foldername, gpu_index=0):
     """
@@ -230,13 +273,24 @@ def all_pipeline(input_path, output_foldername, gpu_index=0):
         output_foldername: 출력 폴더 경로
         gpu_index: GPU 인덱스 (기본값: 0, -1: CPU 사용)
     """
+    # 1) 입력 이미지 폴더 존재 여부 확인
+    if not os.path.isdir(input_path):
+        logger.error(f"입력 경로가 존재하지 않습니다: {input_path}")
+        return 1
+
+    # 2) 출력 폴더 중복 확인
+    if os.path.exists(output_foldername):
+        logger.error(f"출력 폴더가 이미 존재합니다: {output_foldername}")
+        return 1
+    
     logger.info("=== Starting ALL PIPELINE ===")
     logger.debug(f"all_pipeline called with input_path={input_path}, output_foldername={output_foldername}, gpu_index={gpu_index}")
+    
     prepare(input_path, output_foldername)
     feature_extraction(output_foldername, gpu_index)
     match_features(output_foldername, gpu_index)
-    mapper(output_foldername)
-    dense_reconstruction(output_foldername, gpu_index)
+    mapper(output_foldername, gpu_index)
+    # dense_reconstruction(output_foldername, gpu_index)
     logger.info("=== All steps completed ===")
 
 

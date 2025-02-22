@@ -1,2 +1,5 @@
 inputs/*
 outputs/*
+*.log
+codes.txt
+use.py

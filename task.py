@@ -27,5 +27,3 @@ GPU_INDEX = 1 if USE_GPU else -1
 # dense_reconstruction(output_path, GPU_INDEX)
 
 # ---------- (여기부터 작성) ----------
-
-all_pipeline(input_path, output_path, GPU_INDEX)
