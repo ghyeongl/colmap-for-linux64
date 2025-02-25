@@ -8,7 +8,16 @@ task.py
 특정 데이터셋에 대해 전체 COLMAP 파이프라인을 실행하는 예시.
 """
 
-from application.exe import all_pipeline, prepare, feature_extraction, match_features, mapper, dense_reconstruction
+from application.exe import (
+    all_pipeline,
+    prepare,
+    feature_extraction,
+    match_features,
+    mapper,
+    convert_sparse_to_ply,
+    dense_reconstruction,
+    merge_sparse_models
+)
 
 # 샘플 입력/출력 경로 지정
 input_path = "inputs/desk-images"     # 이미지를 저장한 폴더
@@ -24,6 +33,7 @@ GPU_INDEX = 1 if USE_GPU else -1
 # feature_extraction(output_path, GPU_INDEX)
 # match_features(output_path, GPU_INDEX)
 # mapper(output_path)
+# convert_sparse_to_ply(output_path)
 # dense_reconstruction(output_path, GPU_INDEX)
 
 # ---------- (여기부터 작성) ----------

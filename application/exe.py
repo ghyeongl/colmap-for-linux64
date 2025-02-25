@@ -263,15 +263,96 @@ def dense_reconstruction(output_foldername, gpu_index=0):
     logger.debug(f"stereo_fusion command: {cmd_fusion}")
     run_colmap(cmd_fusion, gpu_index=gpu_index)
 
-def all_pipeline(input_path, output_foldername, gpu_index=0):
+def convert_sparse_to_ply(output_foldername):
     """
-    prepare -> feature_extraction -> match_features -> mapper -> dense_reconstruction
+    스파스 재구성 결과를 PLY 포맷으로 변환
+    - input: sparse/0 폴더
+    - output: sparse/points3D.ply 파일
+    """
+    logger.debug(f"convert_sparse_to_ply() called with output_foldername={output_foldername}")
+    output_abs = os.path.abspath(output_foldername)
+    sparse_folder = os.path.join(output_abs, "sparse", "0")
+    output_ply = os.path.join(output_abs, "sparse", "points3D.ply")
+    
+    if not os.path.exists(sparse_folder):
+        logger.error(f"Sparse reconstruction folder not found: {sparse_folder}")
+        raise FileNotFoundError(f"Sparse reconstruction folder not found: {sparse_folder}")
+    
+    cmd = [
+        "model_converter",
+        "--input_path", sparse_folder,
+        "--output_path", output_ply,
+        "--output_type", "PLY"
+    ]
+    
+    logger.debug(f"Converting sparse model to PLY: {cmd}")
+    run_colmap(cmd)
+    logger.info(f"Sparse model converted to PLY: {output_ply}")
+
+def merge_sparse_models(output_foldername):
+    """
+    Merge multiple sparse reconstruction models in the sparse folder.
+    - Looks for numeric subfolders (0,1,2..) under outputs/{folder}/sparse/
+    - Merges them sequentially using colmap model_merger
+    - Final result is saved in sparse/merged/
+    """
+    sparse_path = os.path.join(output_foldername, "sparse")
+    if not os.path.isdir(sparse_path):
+        logger.error(f"sparse folder not found: {sparse_path}")
+        return
+
+    # Find numeric subfolders (0,1,2...)
+    subfolders = []
+    for name in os.listdir(sparse_path):
+        folder_path = os.path.join(sparse_path, name)
+        if re.match(r"^\d+$", name) and os.path.isdir(folder_path):
+            subfolders.append(name)
+
+    subfolders.sort(key=lambda x: int(x))
+    logger.info(f"Found sparse models to merge: {subfolders}")
+    if len(subfolders) < 2:
+        logger.info("Need at least two sparse models to merge. Skipping.")
+        return
+
+    merged_path = os.path.join(sparse_path, "merged")
+    os.makedirs(merged_path, exist_ok=True)
+
+    # Merge first two models
+    model1 = os.path.join(sparse_path, subfolders[0])
+    model2 = os.path.join(sparse_path, subfolders[1])
+    logger.info(f"Merging initial models {subfolders[0]} and {subfolders[1]}")
+    cmd = [
+        "model_merger",
+        "--input_path1", model1,
+        "--input_path2", model2,
+        "--output_path", merged_path
+    ]
+    run_colmap(cmd)
+
+    # Chain-merge remaining models
+    for idx in range(2, len(subfolders)):
+        next_model = os.path.join(sparse_path, subfolders[idx])
+        logger.info(f"Merging model {subfolders[idx]} into merged result")
+        cmd = [
+            "model_merger",
+            "--input_path1", merged_path,
+            "--input_path2", next_model,
+            "--output_path", merged_path
+        ]
+        run_colmap(cmd)
+
+    logger.info(f"All sparse models merged successfully to: {merged_path}")
+
+def all_pipeline(input_path, output_foldername, gpu_index=0, convert_to_ply=True):
+    """
+    prepare -> feature_extraction -> match_features -> mapper -> [convert_to_ply] -> dense_reconstruction
     전체 프로세스를 한 번에 돌리는 편의 함수
 
     Args:
         input_path: 입력 이미지 폴더 경로
         output_foldername: 출력 폴더 경로
         gpu_index: GPU 인덱스 (기본값: 0, -1: CPU 사용)
+        convert_to_ply: 스파스 결과를 PLY로 변환할지 여부 (기본값: True)
     """
     # 1) 입력 이미지 폴더 존재 여부 확인
     if not os.path.isdir(input_path):
@@ -290,7 +371,10 @@ def all_pipeline(input_path, output_foldername, gpu_index=0):
     feature_extraction(output_foldername, gpu_index)
     match_features(output_foldername, gpu_index)
     mapper(output_foldername, gpu_index)
+    if convert_to_ply:
+        convert_sparse_to_ply(output_foldername)
     # dense_reconstruction(output_foldername, gpu_index)
+    
     logger.info("=== All steps completed ===")
 
 
