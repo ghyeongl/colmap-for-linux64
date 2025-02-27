@@ -42,22 +42,30 @@ class FileChecker(FileCheckerBase):
             subfolder_rel_path: "foo/bar"
             filename: "001.jpg"
 
-        src/001.jpg ->
-            abs_file_path:  /.../src/001.jpg
-            subfolder_rel_path: ""
-            filename: "001.jpg"
         """
         src_abs = os.path.abspath(src)
+        image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff"}
+        
         for root, dirs, files in os.walk(src_abs):
             subpath = os.path.relpath(root, src_abs)
             if subpath == ".":
                 subpath = ""  # 최상위 폴더 => 빈 문자열
             for f in files:
                 abs_file_path = os.path.join(root, f)
-                # 1) 심링크인 경우 스킵
-                if os.path.islink(abs_file_path) or os.path.isdir(abs_file_path):
+                # 1) 심링크인 경우 경고 후 스킵
+                if os.path.islink(abs_file_path):
+                    self.logger.warning(f"Skipping symlink: {abs_file_path}")
                     continue
-                yield (abs_file_path, subpath, f)
+
+                # 2) 디렉토리인 경우 경고 후 스킵
+                if os.path.isdir(abs_file_path):
+                    self.logger.warning(f"Skipping directory (unexpected): {abs_file_path}")
+                    continue
+
+                # 3) 파일 확장자가 이미지인지 확인
+                _, ext = os.path.splitext(f)
+                if ext.lower() in image_extensions:
+                    yield (abs_file_path, subpath, f)
 
     def copy_single_file(self, src_file, dst_file):
         """
@@ -71,7 +79,7 @@ class FileChecker(FileCheckerBase):
         if os.path.exists(dst_file):
             self.logger.warning(f"File already exists, skipping: {dst_file}")
             return
-        self.logger.debug(f"Copying file {src_file} -> {dst_file}")
+        # self.logger.debug(f"Copying file {src_file} -> {dst_file}")
         shutil.copy2(src_file, dst_file)
 
     def find_colmap_model_folders(self, base_path: str) -> list:

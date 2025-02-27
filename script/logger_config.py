@@ -8,7 +8,6 @@ class LoggerFactory:
     - 모든 클래스에서 logger_config.LoggerFactory.get_logger(...)를 호출해
       동일한 로거 설정을 사용할 수 있도록 한다.
     """
-    _configured = False
 
     @classmethod
     def get_logger(cls, name=None):
@@ -17,11 +16,11 @@ class LoggerFactory:
         (처음 호출 시 로거에 대한 공통 설정을 수행하고, 이후에는 재활용)
         """
         if name is None:
-            name = "colmap_pipeline"
+            name = "default_logger"
 
         logger = logging.getLogger(name)
 
-        if not cls._configured:
+        if not logger.handlers:
             # 공통 로거 설정(처음 한 번만)
             logger.setLevel(logging.DEBUG)
 
@@ -48,7 +47,5 @@ class LoggerFactory:
             fh_info.setLevel(logging.INFO)   # INFO 이상 (INFO, WARNING, ERROR, CRITICAL)
             fh_info.setFormatter(formatter)
             logger.addHandler(fh_info)
-
-            cls._configured = True
 
         return logger

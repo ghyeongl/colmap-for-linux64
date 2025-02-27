@@ -6,6 +6,7 @@ outputs/*
 *.log
 codes.txt
 use.py
+tree.md
 
 # 최상위 디렉토리에서 task.py 제외한 모든 .py 파일 제외
 /*.py

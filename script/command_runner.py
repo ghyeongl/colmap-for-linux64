@@ -43,6 +43,7 @@ class CommandRunner(CommandRunnerBase):
                 check=True
             )
             self._process_output(result.stdout)
+            self._process_output(result.stderr)
 
         except subprocess.CalledProcessError as e:
             self.logger.error(f"Command failed with exit code {e.returncode}")
