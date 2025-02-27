@@ -206,7 +206,8 @@ def mapper(output_foldername, gpu_index=0):
         "mapper",
         "--database_path", db_path,
         "--image_path", images_path,
-        "--output_path", sparse_folder
+        "--output_path", sparse_folder,
+        "--Mapper.multiple_models", "false"
     ]
     
     logger.debug(f"Mapper command arguments: {cmd}")
@@ -262,6 +263,109 @@ def dense_reconstruction(output_foldername, gpu_index=0):
     ]
     logger.debug(f"stereo_fusion command: {cmd_fusion}")
     run_colmap(cmd_fusion, gpu_index=gpu_index)
+    
+def convert_all_sparse_to_ply(parent_folder: str, output_dir: str = None):
+    """
+    주어진 parent_folder 아래를 재귀적으로 뒤져서,
+    - 'sparse'라는 이름의 폴더를 찾고,
+    - 그 안의 서브폴더(예: sparse/0, sparse/1 등)에 cameras.bin|txt, images.bin|txt, points3D.bin|txt 세트가 있으면
+      model_converter를 이용해 PLY 파일을 생성.
+
+    Args:
+        parent_folder (str): 최상위 폴더. 이 폴더 아래 모든 디렉토리를 탐색.
+        output_dir (str, optional): 변환된 PLY를 저장할 상위 폴더. 지정하지 않으면 해당 sparse/<subfolder> 내부에 생성.
+    """
+    parent_folder = os.path.abspath(parent_folder)
+    if output_dir is not None:
+        output_dir = os.path.abspath(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
+
+    logger.info(f"Starting auto-conversion under {parent_folder}")
+
+    # os.walk를 통해 parent_folder 안의 모든 하위 디렉토리를 탐색
+    for root, dirs, files in os.walk(parent_folder):
+        # 'sparse'라는 폴더가 있으면 그 내부의 서브폴더들을 뒤질 수 있도록 처리
+        # 하지만 os.walk는 이미 모든 디렉토리를 재귀적으로 순회하므로,
+        # "root"가 "sparse"로 끝나면 그 안의 0,1,2,... 폴더를 찾으면 됨.
+        # 예: root.endswith(os.path.sep + "sparse")
+        #     or root.endswith("sparse")  # 경로 구분자 처리
+        # 대신 root가 "sparse/어떤숫자"인 경우 바로 처리해도 됨.
+        
+        # 1) 혹시 "sparse"라는 이름 그 자체인 디렉토리인지 검사
+        if os.path.basename(root) == "sparse":
+            # sparse/ 아래에 있는 디렉토리를 찾는다 (예: 0, 1, 2, ...)
+            subfolders = [os.path.join(root, d) for d in dirs]
+            # subfolders 각각에 대해 모델이 있으면 변환
+            for sub in subfolders:
+                _try_convert_model_to_ply(sub, output_dir)
+        
+        # 2) 혹은 "sparse/0", "sparse/1"처럼 이미 버전 폴더 내부라면?
+        #    os.walk 때문에 결국 이 루프에서 root가 sparse/0이 되는 순간이 옴.
+        #    따라서 basename이 0,1,2,...인 경우에도 시도 가능.
+        #    다만, basename이 0인지 1인지 모를 수도 있고, "some_name"일 수도 있으니,
+        #    아래와 같이 간단히 처리할 수도 있음
+        #    (선택사항: 둘 중 한 방법만 써도 충분히 동작함)
+        if is_colmap_model_folder(root):
+            _try_convert_model_to_ply(root, output_dir)
+
+def is_colmap_model_folder(folder: str) -> bool:
+    """
+    해당 폴더 안에 cameras.bin|txt, images.bin|txt, points3D.bin|txt 세 파일이 존재하면 True
+    """
+    cameras_bin = os.path.join(folder, "cameras.bin")
+    images_bin = os.path.join(folder, "images.bin")
+    points3d_bin = os.path.join(folder, "points3D.bin")
+
+    cameras_txt = os.path.join(folder, "cameras.txt")
+    images_txt = os.path.join(folder, "images.txt")
+    points3d_txt = os.path.join(folder, "points3D.txt")
+
+    has_bin = os.path.exists(cameras_bin) and os.path.exists(images_bin) and os.path.exists(points3d_bin)
+    has_txt = os.path.exists(cameras_txt) and os.path.exists(images_txt) and os.path.exists(points3d_txt)
+
+    return has_bin or has_txt
+
+def _try_convert_model_to_ply(model_folder: str, output_dir: str = None):
+    """
+    인풋 조건: 입력된 폴더 첫 번째 레벨에 cameras.bin|txt, images.bin|txt, points3D.bin|txt 파일이 있어야 함.
+    model_folder 안에 COLMAP 모델 파일( .bin/.txt )이 있으면 PLY로 변환
+    변환된 PLY를 output_dir가 있으면 거기에 저장, 없으면 model_folder 내부에 저장.
+    이미 PLY가 있으면(또는 변환 불가능하면) 건너뜀.
+    """
+    if not is_colmap_model_folder(model_folder):
+        return
+
+    folder_abs = os.path.abspath(model_folder)
+    folder_name = os.path.basename(folder_abs)
+    sparse_folder = os.path.dirname(folder_abs)            # ~/project_name/dataset_name/sparse
+    dataset_folder = os.path.dirname(sparse_folder)        # ~/project_name/dataset_name
+    dataset_name = os.path.basename(dataset_folder)        # "dataset_name"
+    
+    # 최종 파일명: dataset_name-folder_name.ply => 예) dataset_name-0.ply
+    ply_filename = f"{dataset_name}-{folder_name}.ply"
+    
+    # 만약 output_dir가 주어지면, 그 경로에 저장
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        ply_path = os.path.join(output_dir, ply_filename)
+    else:
+        # 지정하지 않으면 model_folder 내부에 저장
+        # (예: ~/project_name/dataset_name/sparse/0/dataset_name-0.ply)
+        ply_path = os.path.join(folder_abs, "points3D.ply")
+    
+    if os.path.exists(ply_path):
+        logger.debug(f"PLY file already exists, skipping: {ply_path}")
+        return
+
+    logger.info(f"Converting model in {model_folder} => {ply_path}")
+    cmd = [
+        "model_converter",
+        "--input_path", folder_abs,
+        "--output_path", ply_path,
+        "--output_type", "PLY"
+    ]
+    run_colmap(cmd)
+    logger.info(f"Done converting {folder_abs} to {ply_path}")
 
 def convert_sparse_to_ply(output_foldername):
     """
@@ -272,22 +376,8 @@ def convert_sparse_to_ply(output_foldername):
     logger.debug(f"convert_sparse_to_ply() called with output_foldername={output_foldername}")
     output_abs = os.path.abspath(output_foldername)
     sparse_folder = os.path.join(output_abs, "sparse", "0")
-    output_ply = os.path.join(output_abs, "sparse", "points3D.ply")
     
-    if not os.path.exists(sparse_folder):
-        logger.error(f"Sparse reconstruction folder not found: {sparse_folder}")
-        raise FileNotFoundError(f"Sparse reconstruction folder not found: {sparse_folder}")
-    
-    cmd = [
-        "model_converter",
-        "--input_path", sparse_folder,
-        "--output_path", output_ply,
-        "--output_type", "PLY"
-    ]
-    
-    logger.debug(f"Converting sparse model to PLY: {cmd}")
-    run_colmap(cmd)
-    logger.info(f"Sparse model converted to PLY: {output_ply}")
+    _try_convert_model_to_ply(sparse_folder)
 
 def merge_sparse_models(output_foldername):
     """
@@ -371,9 +461,10 @@ def all_pipeline(input_path, output_foldername, gpu_index=0, convert_to_ply=True
     feature_extraction(output_foldername, gpu_index)
     match_features(output_foldername, gpu_index)
     mapper(output_foldername, gpu_index)
+    dense_reconstruction(output_foldername, gpu_index)
     if convert_to_ply:
-        convert_sparse_to_ply(output_foldername)
-    # dense_reconstruction(output_foldername, gpu_index)
+        convert_all_sparse_to_ply(output_foldername)
+    
     
     logger.info("=== All steps completed ===")
 
