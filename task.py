@@ -8,7 +8,7 @@ task.py
 특정 데이터셋에 대해 전체 COLMAP 파이프라인을 실행하는 예시.
 """
 
-from application.exe import (
+from script.exe import (
     all_pipeline,
     prepare,
     feature_extraction,
