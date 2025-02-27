@@ -31,6 +31,7 @@ class ColmapPipeline(ColmapPipelineBase):
         self.file_checker = file_checker or FileChecker()
 
     def prepare(self, input_path, output_foldername):
+        self.logger.info("=== Starting prepare ===")
         input_abs = os.path.abspath(input_path)
         output_abs = os.path.abspath(output_foldername)
 
@@ -49,8 +50,11 @@ class ColmapPipeline(ColmapPipelineBase):
 
             dst_file = os.path.join(images_folder, dst_filename)
             self.file_checker.copy_single_file(filepath, dst_file)
+        
+        self.logger.info("Prepare completed: all images copied into 'images/' folder.")
 
     def feature_extraction(self, output_foldername, gpu_index=0):
+        self.logger.info("=== Starting feature_extraction ===")
         db_path = os.path.join(output_foldername, "database.db")
         images_path = os.path.join(output_foldername, "images")
 
@@ -61,8 +65,10 @@ class ColmapPipeline(ColmapPipelineBase):
             "--SiftExtraction.use_gpu", "1" if gpu_index >= 0 else "0"
         ]
         self.command_runner.run_command(cmd, gpu_index=gpu_index)
+        self.logger.info("feature_extraction completed.")
 
     def match_features(self, output_foldername, gpu_index=0):
+        self.logger.info("=== Starting match_features ===")
         db_path = os.path.join(output_foldername, "database.db")
         cmd = [
             "exhaustive_matcher",
@@ -70,8 +76,10 @@ class ColmapPipeline(ColmapPipelineBase):
             "--SiftMatching.use_gpu", "1" if gpu_index >= 0 else "0"
         ]
         self.command_runner.run_command(cmd, gpu_index=gpu_index)
+        self.logger.info("match_features completed.")
 
     def mapper(self, output_foldername, gpu_index=0):
+        self.logger.info("=== Starting mapper (Sparse Reconstruction) ===")
         db_path = os.path.join(output_foldername, "database.db")
         images_path = os.path.join(output_foldername, "images")
         sparse_folder = os.path.join(output_foldername, "sparse")
@@ -85,8 +93,10 @@ class ColmapPipeline(ColmapPipelineBase):
             "--Mapper.multiple_models", "false"
         ]
         self.command_runner.run_command(cmd, gpu_index=gpu_index)
+        self.logger.info("mapper (Sparse Reconstruction) completed.")
 
     def dense_reconstruction(self, output_foldername, gpu_index=0):
+        self.logger.info("=== Starting dense_reconstruction ===")
         """
         Dense Reconstruction (image_undistorter -> patch_match_stereo -> stereo_fusion)
         """
@@ -104,8 +114,10 @@ class ColmapPipeline(ColmapPipelineBase):
 
         # 3) stereo_fusion
         self._run_stereo_fusion(dense_folder, gpu_index)
+        self.logger.info("dense_reconstruction completed.")
 
     def _run_image_undistorter(self, images_folder, sparse_folder, dense_folder, gpu_index):
+        self.logger.info("Running image_undistorter...")
         """
         image_undistorter 실행
         """
@@ -117,8 +129,10 @@ class ColmapPipeline(ColmapPipelineBase):
             "--output_type", "COLMAP"
         ]
         self.command_runner.run_command(cmd, gpu_index=gpu_index)
+        self.logger.info("image_undistorter completed.")
 
     def _run_patch_match_stereo(self, dense_folder, gpu_index):
+        self.logger.info("Running patch_match_stereo...")
         """
         patch_match_stereo 실행
         """
@@ -129,8 +143,10 @@ class ColmapPipeline(ColmapPipelineBase):
             "--PatchMatchStereo.gpu_index", "0" if gpu_index >= 0 else "-1"
         ]
         self.command_runner.run_command(cmd, gpu_index=gpu_index)
+        self.logger.info("patch_match_stereo completed.")
 
     def _run_stereo_fusion(self, dense_folder, gpu_index):
+        self.logger.info("Running stereo_fusion...")
         """
         stereo_fusion 실행
         """
@@ -143,8 +159,10 @@ class ColmapPipeline(ColmapPipelineBase):
             "--output_path", fused_ply
         ]
         self.command_runner.run_command(cmd, gpu_index=gpu_index)
+        self.logger.info(f"stereo_fusion completed. Output: {fused_ply}")
             
     def convert_sparse_to_ply(self, output_foldername, gpu_index=0, ply_output_dir=None):
+        self.logger.info("=== Starting convert_sparse_to_ply ===")
         """
         sparse 폴더 아래의 모든 'COLMAP 모델 폴더'를 찾아 model_converter로 변환.
 
@@ -223,3 +241,30 @@ class ColmapPipeline(ColmapPipelineBase):
         self.dense_reconstruction(output_foldername, gpu_index)
 
         self.logger.info("=== All steps completed ===")
+        
+    def all_except_dense(self, input_path, output_foldername, gpu_index=0, convert_to_ply=True):
+        if not os.path.isdir(input_path):
+            self.logger.error(f"Input path does not exist: {input_path}")
+            return 1
+        if os.path.exists(output_foldername):
+            self.logger.error(f"Output folder already exists: {output_foldername}")
+            return 1
+
+        self.logger.info("=== Starting ALL EXCEPT DENSE ===")
+        self.logger.debug(f"all_except_dense: input={input_path}, output={output_foldername}, gpu={gpu_index}")
+
+        # 1) 준비
+        self.prepare(input_path, output_foldername)
+        # 2) 특징 추출
+        self.feature_extraction(output_foldername, gpu_index)
+        # 3) 특징 매칭
+        self.match_features(output_foldername, gpu_index)
+        # 4) 스파스 재구성
+        self.mapper(output_foldername, gpu_index)
+
+        # (옵션) PLY 변환
+        if convert_to_ply:
+            self.convert_sparse_to_ply(output_foldername, gpu_index)
+
+        self.logger.info("=== All steps (except dense) completed ===")
+
