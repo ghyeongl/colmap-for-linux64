@@ -54,18 +54,25 @@ class FileChecker(FileCheckerBase):
                 subpath = ""  # 최상위 폴더 => 빈 문자열
             for f in files:
                 abs_file_path = os.path.join(root, f)
+                # 1) 심링크인 경우 스킵
+                if os.path.islink(abs_file_path) or os.path.isdir(abs_file_path):
+                    continue
                 yield (abs_file_path, subpath, f)
 
     def copy_single_file(self, src_file, dst_file):
         """
         개별 파일을 복사 (덮어쓰기 or 스킵 여부는 필요에 따라 결정)
         """
+        parent_dir = os.path.dirname(dst_file)
+        if not os.path.exists(parent_dir):
+            self.logger.warning(f"Destination directory does not exist, creating it: {parent_dir}")
+            os.makedirs(parent_dir, exist_ok=True)
+            
         if os.path.exists(dst_file):
             self.logger.warning(f"File already exists, skipping: {dst_file}")
             return
         self.logger.debug(f"Copying file {src_file} -> {dst_file}")
         shutil.copy2(src_file, dst_file)
-
 
     def find_colmap_model_folders(self, base_path: str) -> list:
         """

@@ -40,6 +40,7 @@ class ColmapPipeline(ColmapPipelineBase):
 
         # 이미지 폴더로 복사
         images_folder = os.path.join(output_abs, "images")
+        self.file_checker.safe_makedirs(images_folder)
         for filepath, foldername, filename in self.file_checker.find_images_recursive(input_abs):
             # folder_rel = "front/bar" 등
             prefix = foldername.replace(os.path.sep, "_") if foldername else ""
