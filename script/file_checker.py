@@ -23,12 +23,49 @@ class FileChecker(FileCheckerBase):
         else:
             self.logger.debug(f"Directory already exists: {path}")
 
+
     def copy_tree(self, src: str, dst: str):
         if os.path.exists(dst):
             self.logger.debug(f"Already exists: {dst}, skip copy_tree.")
         else:
             self.logger.info(f"Copying from {src} to {dst}")
             shutil.copytree(src, dst)
+
+    def find_images_recursive(self, src: str):
+        """
+        src 디렉토리를 재귀적으로 탐색해,
+        (abs_file_path, subfolder_rel_path, filename)을 yield한다.
+
+        예:
+        src/foo/bar/001.jpg -> 
+            abs_file_path:  /.../src/foo/bar/001.jpg
+            subfolder_rel_path: "foo/bar"
+            filename: "001.jpg"
+
+        src/001.jpg ->
+            abs_file_path:  /.../src/001.jpg
+            subfolder_rel_path: ""
+            filename: "001.jpg"
+        """
+        src_abs = os.path.abspath(src)
+        for root, dirs, files in os.walk(src_abs):
+            subpath = os.path.relpath(root, src_abs)
+            if subpath == ".":
+                subpath = ""  # 최상위 폴더 => 빈 문자열
+            for f in files:
+                abs_file_path = os.path.join(root, f)
+                yield (abs_file_path, subpath, f)
+
+    def copy_single_file(self, src_file, dst_file):
+        """
+        개별 파일을 복사 (덮어쓰기 or 스킵 여부는 필요에 따라 결정)
+        """
+        if os.path.exists(dst_file):
+            self.logger.warning(f"File already exists, skipping: {dst_file}")
+            return
+        self.logger.debug(f"Copying file {src_file} -> {dst_file}")
+        shutil.copy2(src_file, dst_file)
+
 
     def find_colmap_model_folders(self, base_path: str) -> list:
         """
@@ -46,6 +83,7 @@ class FileChecker(FileCheckerBase):
                 model_folders.append(root)
 
         return model_folders
+
 
     def _is_colmap_model_folder(self, folder: str) -> bool:
         cameras_bin = os.path.join(folder, "cameras.bin")

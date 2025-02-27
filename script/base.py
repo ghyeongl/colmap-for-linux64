@@ -38,6 +38,20 @@ class FileCheckerBase(ABC):
         'COLMAP 모델 폴더'를 찾아 리스트로 반환.
         """
         pass
+    
+    @abstractmethod
+    def find_images_recursive(self, src: str):
+        """
+        이미지 경로 찾아서 파일 절대 경로, 폴더이름, 파일이름 반환
+        """
+        pass
+    
+    @abstractmethod
+    def copy_single_file(self, src_file, dst_file):
+        """
+        개별 파일 복사 (반환 없음, 로그에 결과 출력(debug))
+        """
+        pass
 
 
 ###############################################################################
