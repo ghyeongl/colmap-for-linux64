@@ -1,6 +1,7 @@
 # colmap_pipeline.py
 import os
 import logging
+from PIL import Image
 
 from .base import ColmapPipelineBase, CommandRunnerBase, FileCheckerBase
 from .command_runner import CommandRunner
@@ -31,6 +32,37 @@ class ColmapPipeline(ColmapPipelineBase):
             self.command_runner = command_runner
 
         self.file_checker = file_checker or FileChecker()
+
+    def resize_images(self, output_foldername, scale_factor=0.25):
+        """
+        이미지 폴더 내의 모든 이미지를 지정된 비율로 리사이즈.
+        
+        Args:
+            output_foldername (str): COLMAP 파이프라인 출력 폴더
+            scale_factor (float): 리사이즈 비율 (0.25 = 1/4 크기)
+        """
+        self.logger.info(f"=== Starting image resize (scale={scale_factor}) ===")
+        images_folder = os.path.join(output_foldername, "images")
+        if not os.path.exists(images_folder):
+            self.logger.error(f"Images folder not found: {images_folder}")
+            return
+
+        for filename in os.listdir(images_folder):
+            if not filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                continue
+
+            filepath = os.path.join(images_folder, filename)
+            try:
+                with Image.open(filepath) as img:
+                    width = int(img.width * scale_factor)
+                    height = int(img.height * scale_factor)
+                    resized = img.resize((width, height), Image.LANCZOS)
+                    resized.save(filepath, quality=95)
+                    self.logger.debug(f"Resized: {filename} ({img.width}x{img.height} -> {width}x{height})")
+            except Exception as e:
+                self.logger.error(f"Failed to resize {filename}: {str(e)}")
+
+        self.logger.info("Image resize completed.")
 
     def prepare(self, input_path, output_foldername):
         self.logger.info("=== Starting prepare ===")
