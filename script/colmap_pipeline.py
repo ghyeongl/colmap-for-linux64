@@ -161,6 +161,52 @@ class ColmapPipeline(ColmapPipelineBase):
         ]
         self.command_runner.run_command(cmd, gpu_index=gpu_index)
         self.logger.info(f"stereo_fusion completed. Output: {fused_ply}")
+        
+    def undistort_images(
+        self,
+        output_foldername,
+        gpu_index=0,
+        undistort_output_folder="undistorted"
+    ):
+        """
+        별도의 언디스토션(Undistortion) 단계를 수행하는 메서드.
+        
+        일반적으로 'dense_reconstruction'에서는 내부적으로 image_undistorter가
+        실행되지만, Gaussian Splatting이나 다른 NeRF 파이프라인에서
+        PINHOLE/SIMPLE_PINHOLE 모델의 undistorted 이미지와 .txt 포맷의 카메라/이미지
+        정보가 필요한 경우가 많아, 이 메서드를 따로 호출할 수 있음.
+
+        Args:
+            output_foldername (str): 파이프라인 출력 폴더(=mapper 후 결과가 있는 폴더).
+            gpu_index (int): GPU를 사용할 인덱스 (기본 0, -1이면 CPU).
+            undistort_output_folder (str): 언디스토션 결과를 저장할 하위 폴더명.
+            output_type (str): 'COLMAP' 또는 'TXT' 지정 가능.
+                - COLMAP: dense_reconstruction 시 쓰는 구조(스테레오 매칭용).
+                - TXT: cameras.txt, images.txt 등 텍스트 파일로 추출. (NeRF 등에서 활용)
+        """
+        self.logger.info("=== Starting explicit undistortion ===")
+        # Sparse 결과 중 0번 폴더(기본)
+        sparse_folder0 = os.path.join(output_foldername, "sparse", "0")
+        images_folder = os.path.join(output_foldername, "images")
+
+        if not os.path.exists(sparse_folder0):
+            self.logger.error(f"Sparse folder not found: {sparse_folder0}")
+            return 1
+
+        undistort_folder = os.path.join(output_foldername, undistort_output_folder)
+        self.file_checker.safe_makedirs(undistort_folder)
+
+        self.logger.info(f"Undistorting images into: {undistort_folder}")
+        cmd = [
+            "image_undistorter",
+            "--image_path", images_folder,
+            "--input_path", sparse_folder0,
+            "--output_path", undistort_folder
+        ]
+        self.command_runner.run_command(cmd, gpu_index=gpu_index)
+
+        self.logger.info("=== Undistortion step completed ===")
+        return 0
             
     def convert_sparse_to_ply(self, output_foldername, gpu_index=0, ply_output_dir=None):
         self.logger.info("=== Starting convert_sparse_to_ply ===")
