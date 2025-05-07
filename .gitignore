@@ -1,6 +1,8 @@
 # inputs, outputs 폴더 내 모든 파일 제외
 inputs/*
 outputs/*
+inputs
+outputs
 
 # 최상위 디렉토리에서 .log 파일, codes.txt, use.py 제외
 *.log

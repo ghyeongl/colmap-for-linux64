@@ -37,13 +37,13 @@ class LoggerFactory:
             logger.addHandler(ch)
             
             # 2) 파일 핸들러 (DEBUG 전용) => task-debug.log
-            fh_debug = logging.FileHandler("task-debug.log", mode='a', encoding='utf-8')
+            fh_debug = logging.FileHandler("logs/task-debug.log", mode='a', encoding='utf-8')
             fh_debug.setLevel(logging.DEBUG)  # DEBUG 이상 (DEBUG, INFO, WARNING, ERROR, CRITICAL) 모두
             fh_debug.setFormatter(formatter)
             logger.addHandler(fh_debug)
 
             # 3) 파일 핸들러 (INFO 전용) => task-info.log
-            fh_info = logging.FileHandler("task-info.log", mode='a', encoding='utf-8')
+            fh_info = logging.FileHandler("logs/task-info.log", mode='a', encoding='utf-8')
             fh_info.setLevel(logging.INFO)   # INFO 이상 (INFO, WARNING, ERROR, CRITICAL)
             fh_info.setFormatter(formatter)
             logger.addHandler(fh_info)
